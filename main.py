@@ -4,12 +4,12 @@ import av
 import pydub
 from io import BytesIO
 
-# We'll store audio in session_state across reruns
+# Save recorded audio across reruns
 if "audio_segments" not in st.session_state:
     st.session_state["audio_segments"] = []
 
 def audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
-    # Convert raw frame to pydub segment
+    # Convert raw frame to pydub
     raw_audio = frame.to_ndarray()
     sample_rate = frame.sample_rate
     channels = len(frame.layout.channels)
@@ -20,17 +20,13 @@ def audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
         frame_rate=sample_rate,
         channels=channels
     )
-
-    # Accumulate in session_state
     st.session_state["audio_segments"].append(segment)
-
-    # Must return the frame unaltered
     return frame
 
 def main():
-    st.title("Audio Recorder (streamlit-webrtc)")
+    st.title("Audio Recorder Demo")
 
-    # The WebRTC component to capture mic audio
+    # Start recording from mic
     webrtc_streamer(
         key="audio-only",
         mode=WebRtcMode.SENDONLY,
@@ -38,7 +34,7 @@ def main():
         media_stream_constraints={"audio": True, "video": False}
     )
 
-    # Button to play back recorded audio
+    # Playback button
     if st.button("Playback recorded audio"):
         if not st.session_state["audio_segments"]:
             st.warning("No audio recorded yet!")
@@ -48,7 +44,7 @@ def main():
             combined.export(wav_io, format="wav")
             st.audio(wav_io.getvalue(), format="audio/wav")
 
-    # Button to clear the buffer
+    # Clear button
     if st.button("Clear recording"):
         st.session_state["audio_segments"] = []
         st.success("Recording cleared.")
