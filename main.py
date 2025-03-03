@@ -4,84 +4,61 @@ import av
 import pydub
 from io import BytesIO
 
-# We'll store the captured frames and a frame counter in session_state
+# Keep a list of pydub.AudioSegment and a frame counter to debug frames
 if "audio_segments" not in st.session_state:
     st.session_state["audio_segments"] = []
-
 if "num_frames" not in st.session_state:
-    st.session_state["num_frames"] = 0  # We'll increment this in the callback
+    st.session_state["num_frames"] = 0
 
 def audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
-    """
-    Called each time a new audio frame arrives from the browser.
-    We'll convert it to pydub.AudioSegment and store it in session_state.
-    Also increment a frame counter for debugging.
-    """
-    # 1. Increment our debug counter
+    # Each incoming frame increments the counter and is converted to pydub
     st.session_state["num_frames"] += 1
 
-    # 2. Convert raw frame data to a pydub.AudioSegment
-    #    - Make sure we have a 16-bit PCM array.
     raw_audio = frame.to_ndarray()
     sample_rate = frame.sample_rate
-    channels = len(frame.layout.channels)  # e.g. 1 or 2
+    channels = len(frame.layout.channels)
 
-    audio_segment = pydub.AudioSegment(
+    segment = pydub.AudioSegment(
         data=raw_audio.tobytes(),
-        sample_width=2,        # 16-bit audio
+        sample_width=2,      # 16-bit
         frame_rate=sample_rate,
         channels=channels
     )
+    st.session_state["audio_segments"].append(segment)
 
-    # 3. Accumulate the segments
-    st.session_state["audio_segments"].append(audio_segment)
-
-    # 4. Return the frame unchanged
-    return frame
+    return frame  # Must return the frame for callback signature
 
 def main():
-    st.title("Audio Recorder using streamlit-webrtc")
+    st.title("Audio Recorder using streamlit-webrtc (SENDONLY)")
 
-    st.markdown(
-        """
-        **Instructions**  
-        1. Click "Start" to begin capturing audio from your mic (check your browser's permission settings).  
-        2. Speak or make noise, then click "Stop" to end the recording.  
-        3. Click "Playback recorded audio" to play what you captured.  
-        4. If no audio is recorded, see the debug info below and try the suggestions.  
-        """
+    st.write(
+        "Click **Start** to begin recording. Then click **Stop** when done.\n"
+        "If you see errors, let the page fully load before pressing Start."
     )
 
-    # The core webrtc widget: audio only, with our callback to collect frames
     webrtc_ctx = webrtc_streamer(
         key="audio-only",
-        mode=WebRtcMode.SENDRECV,            # or SENDONLY if you don't need to receive remote audio
+        mode=WebRtcMode.SENDONLY,  # Only send audio from your mic to the server
         audio_frame_callback=audio_frame_callback,
-        media_stream_constraints={"audio": True, "video": False},  # audio-only
-        async_processing=True,
+        media_stream_constraints={"audio": True, "video": False},
+        # Removed async_processing to reduce event-loop complexity
     )
 
-    st.write(f"Debug: Frames received so far: {st.session_state['num_frames']}")
+    st.write(f"Frames captured: {st.session_state['num_frames']}")
 
-    # Button to play back the captured audio
     if st.button("Playback recorded audio"):
         if len(st.session_state["audio_segments"]) == 0:
             st.warning("No audio recorded yet!")
         else:
-            # Combine all segments
-            combined_segment = sum(st.session_state["audio_segments"])
-
-            # Convert to WAV bytes
+            combined = sum(st.session_state["audio_segments"])
             wav_io = BytesIO()
-            combined_segment.export(wav_io, format="wav")
-
+            combined.export(wav_io, format="wav")
             st.audio(wav_io.getvalue(), format="audio/wav")
 
-    # Button to clear recordings
     if st.button("Clear recording"):
         st.session_state["audio_segments"] = []
         st.session_state["num_frames"] = 0
-        st.success("Recording buffer cleared.")
+        st.success("Cleared recorded audio.")
 
 if __name__ == "__main__":
     main()
