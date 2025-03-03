@@ -1,8 +1,4 @@
 import streamlit as st
-import numpy as np
-import io
-import wave
-import tempfile
 import base64
 
 def record_audio_html():
@@ -50,7 +46,7 @@ def record_audio_html():
     """
     return audio_rec_js
 
-def main():  # Corrected indentation here
+def main():
     st.title("Browser-Based Voice Recorder and Player")
 
     audio_rec_html_str = record_audio_html()
@@ -91,19 +87,6 @@ def main():  # Corrected indentation here
     </script>""", height=0)
 
     import streamlit.components.v1 as components
-    components.html(
-        f"""
-    <script>
-    window.addEventListener('message', function(event) {{
-        if (event.data.type === 'audio_available') {{
-            Streamlit.setComponentValue(event.data.detail);
-        }}
-    }});
-    </script>
-    """,
-        height=0,
-    )
-
     audio_base64_from_js = components.html(
         """<script>
         document.addEventListener('audio_available', function(event) {
