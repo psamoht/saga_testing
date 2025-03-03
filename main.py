@@ -1,44 +1,46 @@
 """
-Streamlit Audio Recorder without 'key' Parameter
-================================================
+Streamlit Audio Recorder Demo with Debug Suggestions
+====================================================
 
-This script records audio in the user's browser using st_audiorec, then
-plays it back immediately. It omits the 'key' argument to avoid TypeError
-on older st_audiorec versions.
+This script uses st_audiorec for in-browser audio recording and immediate
+playback. Some users experience a short, cutoff initial recording, requiring
+extra clicks (Start → Stop → Reset → Start). This quirk is often due to how
+the underlying st_audiorec JavaScript manages microphone state.
 
-If you need stable widget states, consider upgrading st_audiorec to a
-version that supports the 'key' argument, or explore alternative approaches.
+Tips:
+- Check mic permissions in your browser.
+- Refresh or try a different browser (Chrome, Firefox, Edge).
+- Check logs if you see errors.
+- If the flow remains problematic, consider using streamlit-webrtc instead.
 """
 
 import streamlit as st
 from st_audiorec import st_audiorec
 
-def record_audio():
-    """
-    Creates an audio recorder widget and returns the recorded WAV data.
-    """
-    # Just call st_audiorec() without passing key=..., to avoid the TypeError.
-    audio_data = st_audiorec()
-    return audio_data
-
 def main():
-    """
-    Main function that sets up the Streamlit app layout, instructions, and
-    handles audio recording + playback.
-    """
     st.title("Audio Recorder in Streamlit")
 
-    st.write(
-        "Click on the microphone icon below to start and stop recording. "
-        "If you see errors, check your microphone permissions or logs."
+    st.markdown(
+        """
+        **Instructions**  
+        1. Make sure your browser's microphone permission is granted.  
+        2. Click the microphone below to start recording, click again to stop.  
+        3. If it only records for a split second on the first try, you may need 
+           to click "Reset" and start again. (This is a known quirk with some
+           st_audiorec versions/browsers.)  
+        4. Once you have a proper recording, it will appear below.
+        """
     )
 
-    # Capture audio data
-    audio_data = record_audio()
+    # Attempt to record audio
+    audio_data = st_audiorec()
 
-    # If there's valid audio data, let the user play it
+    # Debugging: show raw data structure to see if it recorded anything
+    st.write("Debug: raw audio_data output:", audio_data)
+
+    # If there is recorded audio, let the user play it
     if audio_data is not None:
-        st.write("Your recording is ready. Click play below to listen.")
+        st.write("Your recording is ready. Click the play button below to listen.")
         st.audio(audio_data, format="audio/wav")
 
 if __name__ == "__main__":
