@@ -1,57 +1,120 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
-import av
-import pydub
-from io import BytesIO
+import numpy as np
+import io
+import wave
+import tempfile
+import base64
 
-# We'll store audio in session_state across reruns
-if "audio_segments" not in st.session_state:
-    st.session_state["audio_segments"] = []
+def record_audio_html():
+    """Generates HTML and JavaScript for browser-based audio recording."""
+    audio_rec_js = """
+    <script>
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            const mediaRecorder = new MediaRecorder(stream);
+            const audioChunks = [];
 
-def audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
-    # Convert raw frame to pydub segment
-    raw_audio = frame.to_ndarray()
-    sample_rate = frame.sample_rate
-    channels = len(frame.layout.channels)
+            mediaRecorder.addEventListener("dataavailable", event => {
+                audioChunks.push(event.data);
+            });
 
-    segment = pydub.AudioSegment(
-        data=raw_audio.tobytes(),
-        sample_width=2,  # 16-bit
-        frame_rate=sample_rate,
-        channels=channels
-    )
+            mediaRecorder.addEventListener("stop", () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64Audio = reader.result.split(',')[1];
+                    const event = new CustomEvent("audio_available", { detail: base64Audio });
+                    document.dispatchEvent(event);
+                };
+                reader.readAsDataURL(audioBlob);
 
-    # Accumulate in session_state
-    st.session_state["audio_segments"].append(segment)
+            });
 
-    # Must return the frame unaltered
-    return frame
+            document.getElementById("recordButton").onclick = () => {
+                audioChunks.length = 0; // Clear previous recording
+                mediaRecorder.start();
+                document.getElementById("recordButton").disabled = true;
+                document.getElementById("stopButton").disabled = false;
+            };
+
+            document.getElementById("stopButton").onclick = () => {
+                mediaRecorder.stop();
+                document.getElementById("recordButton").disabled = false;
+                document.getElementById("stopButton").disabled = true;
+
+            };
+        });
+    </script>
+    <button id="recordButton">Record</button>
+    <button id="stopButton" disabled>Stop</button>
+    """
+    return audio_rec_js
 
 def main():
-    st.title("Audio Recorder (streamlit-webrtc)")
+    st.title("Browser-Based Voice Recorder and Player")
 
-    # The WebRTC component to capture mic audio
-    webrtc_streamer(
-        key="audio-only",
-        mode=WebRtcMode.SENDONLY,
-        audio_frame_callback=audio_frame_callback,
-        media_stream_constraints={"audio": True, "video": False}
+    audio_rec_html_str = record_audio_html()
+    st.components.v1.html(audio_rec_html_str, height=100)
+
+    audio_data_base64 = st.session_state.get("audio_base64")
+
+    if audio_data_base64:
+        audio_bytes = base64.b64decode(audio_data_base64)
+        st.audio(audio_bytes, format='audio/wav')
+
+        st.download_button(
+            label="Download WAV",
+            data=audio_bytes,
+            file_name="recording.wav",
+            mime="audio/wav"
+        )
+
+    def receive_audio(event):
+        st.session_state["audio_base64"] = event.detail
+        st.experimental_rerun() #force streamlit rerun to show audio.
+
+    st.components.v1.html(f"""<script>
+        document.addEventListener('audio_available', function(event) {{
+            window.parent.postMessage({{
+                'type': 'audio_available',
+                'detail': event.detail
+            }}, "*");
+        }});
+
+        window.addEventListener('message', function(event) {{
+            if (event.data.type === 'audio_available') {{
+                const event = new CustomEvent('audio_available', {{ detail: event.data.detail }});
+                document.dispatchEvent(event);
+            }}
+        }});
+
+    </script>""", height=0)
+
+    import streamlit.components.v1 as components
+    components.html(
+        f"""
+    <script>
+    window.addEventListener('message', function(event) {{
+        if (event.data.type === 'audio_available') {{
+            Streamlit.setComponentValue(event.data.detail);
+        }}
+    }});
+    </script>
+    """,
+        height=0,
     )
 
-    # Button to play back recorded audio
-    if st.button("Playback recorded audio"):
-        if not st.session_state["audio_segments"]:
-            st.warning("No audio recorded yet!")
-        else:
-            combined = sum(st.session_state["audio_segments"])
-            wav_io = BytesIO()
-            combined.export(wav_io, format="wav")
-            st.audio(wav_io.getvalue(), format="audio/wav")
+    audio_base64_from_js = components.html(
+        """<script>
+        document.addEventListener('audio_available', function(event) {
+            Streamlit.setComponentValue(event.detail);
+        });
+        </script>""",
+        height=0,
+    )
 
-    # Button to clear the buffer
-    if st.button("Clear recording"):
-        st.session_state["audio_segments"] = []
-        st.success("Recording cleared.")
+    if audio_base64_from_js:
+        receive_audio({'detail': audio_base64_from_js})
 
 if __name__ == "__main__":
     main()
