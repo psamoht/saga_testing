@@ -1,5 +1,5 @@
-streamlit==1.24.1
-streamlit-webrtc==0.45.0
-aiortc
+streamlit
+streamlit-webrtc
 av
+aiortc
 pydub
