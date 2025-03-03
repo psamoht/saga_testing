@@ -6,9 +6,51 @@ import tempfile
 import base64
 
 def record_audio_html():
-    # ... (same as before)
+    """Generates HTML and JavaScript for browser-based audio recording."""
+    audio_rec_js = """
+    <script>
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            const mediaRecorder = new MediaRecorder(stream);
+            const audioChunks = [];
 
-def main():
+            mediaRecorder.addEventListener("dataavailable", event => {
+                audioChunks.push(event.data);
+            });
+
+            mediaRecorder.addEventListener("stop", () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64Audio = reader.result.split(',')[1];
+                    const event = new CustomEvent("audio_available", { detail: base64Audio });
+                    document.dispatchEvent(event);
+                };
+                reader.readAsDataURL(audioBlob);
+
+            });
+
+            document.getElementById("recordButton").onclick = () => {
+                audioChunks.length = 0; // Clear previous recording
+                mediaRecorder.start();
+                document.getElementById("recordButton").disabled = true;
+                document.getElementById("stopButton").disabled = false;
+            };
+
+            document.getElementById("stopButton").onclick = () => {
+                mediaRecorder.stop();
+                document.getElementById("recordButton").disabled = false;
+                document.getElementById("stopButton").disabled = true;
+
+            };
+        });
+    </script>
+    <button id="recordButton">Record</button>
+    <button id="stopButton" disabled>Stop</button>
+    """
+    return audio_rec_js
+
+def main():  # Corrected indentation here
     st.title("Browser-Based Voice Recorder and Player")
 
     audio_rec_html_str = record_audio_html()
@@ -71,7 +113,7 @@ def main():
         height=0,
     )
 
-    if audio_base64_from_js:  # Add this check
+    if audio_base64_from_js:
         receive_audio({'detail': audio_base64_from_js})
 
 if __name__ == "__main__":
