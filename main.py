@@ -1,96 +1,87 @@
-"""
-Audio Recording and Playback with streamlit-webrtc
-==================================================
-
-1. Install dependencies in your requirements.txt:
-   streamlit-webrtc
-   av
-   pydub
-
-2. Deploy or run locally. 
-3. Click "Start" on the webrtc widget to begin capturing audio frames.
-4. Click "Stop" when you're finished.
-5. Press "Playback recorded audio" to hear your captured audio.
-6. Press "Clear recording" if you want to discard and record again.
-"""
-
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 import av
 import pydub
 from io import BytesIO
 
-# We'll store the captured audio segments in session_state so they persist
-# across script reruns while the app is running.
+# We'll store the captured frames and a frame counter in session_state
 if "audio_segments" not in st.session_state:
     st.session_state["audio_segments"] = []
 
+if "num_frames" not in st.session_state:
+    st.session_state["num_frames"] = 0  # We'll increment this in the callback
+
 def audio_frame_callback(frame: av.AudioFrame) -> av.AudioFrame:
     """
-    This callback is invoked in real-time for each incoming audio frame.
-    We convert the raw data to a pydub AudioSegment and store it in session_state.
+    Called each time a new audio frame arrives from the browser.
+    We'll convert it to pydub.AudioSegment and store it in session_state.
+    Also increment a frame counter for debugging.
     """
-    # Convert the frame's audio data to a NumPy array (int16)
+    # 1. Increment our debug counter
+    st.session_state["num_frames"] += 1
+
+    # 2. Convert raw frame data to a pydub.AudioSegment
+    #    - Make sure we have a 16-bit PCM array.
     raw_audio = frame.to_ndarray()
     sample_rate = frame.sample_rate
-    channels = len(frame.layout.channels)  # typically 1 or 2
+    channels = len(frame.layout.channels)  # e.g. 1 or 2
 
-    # Create a pydub AudioSegment from the raw PCM audio
     audio_segment = pydub.AudioSegment(
         data=raw_audio.tobytes(),
-        sample_width=2,       # 16-bit audio
+        sample_width=2,        # 16-bit audio
         frame_rate=sample_rate,
         channels=channels
     )
 
-    # Accumulate the segments in session_state
+    # 3. Accumulate the segments
     st.session_state["audio_segments"].append(audio_segment)
 
-    # Return the frame unmodified (required for callback signature)
+    # 4. Return the frame unchanged
     return frame
 
 def main():
     st.title("Audio Recorder using streamlit-webrtc")
 
-    st.write(
-        "1. Click **Start** below to begin capturing audio from your microphone.\n"
-        "2. Speak or make noise.\n"
-        "3. Click **Stop** to end recording.\n"
-        "4. Press **Playback recorded audio** to listen.\n"
-        "5. Press **Clear recording** to start over."
+    st.markdown(
+        """
+        **Instructions**  
+        1. Click "Start" to begin capturing audio from your mic (check your browser's permission settings).  
+        2. Speak or make noise, then click "Stop" to end the recording.  
+        3. Click "Playback recorded audio" to play what you captured.  
+        4. If no audio is recorded, see the debug info below and try the suggestions.  
+        """
     )
 
-    # The webrtc_streamer sets up the audio pipeline. 
-    # mode=WebRtcMode.SENDRECV means we send audio from the browser to the server,
-    # and also can receive something back (though we won't use returning stream here).
-    # audio_frame_callback is where we handle frames.
+    # The core webrtc widget: audio only, with our callback to collect frames
     webrtc_ctx = webrtc_streamer(
         key="audio-only",
-        mode=WebRtcMode.SENDRECV,
+        mode=WebRtcMode.SENDRECV,            # or SENDONLY if you don't need to receive remote audio
         audio_frame_callback=audio_frame_callback,
         media_stream_constraints={"audio": True, "video": False},  # audio-only
         async_processing=True,
     )
 
-    # Button: Playback the recorded audio
+    st.write(f"Debug: Frames received so far: {st.session_state['num_frames']}")
+
+    # Button to play back the captured audio
     if st.button("Playback recorded audio"):
         if len(st.session_state["audio_segments"]) == 0:
             st.warning("No audio recorded yet!")
         else:
-            # Concatenate all recorded segments into one continuous segment
+            # Combine all segments
             combined_segment = sum(st.session_state["audio_segments"])
 
-            # Convert the combined segment to WAV in memory
+            # Convert to WAV bytes
             wav_io = BytesIO()
             combined_segment.export(wav_io, format="wav")
 
-            # st.audio() can play the WAV data directly from bytes
             st.audio(wav_io.getvalue(), format="audio/wav")
 
-    # Button: Clear any accumulated audio
+    # Button to clear recordings
     if st.button("Clear recording"):
         st.session_state["audio_segments"] = []
-        st.success("Recording buffer cleared. You can record again.")
+        st.session_state["num_frames"] = 0
+        st.success("Recording buffer cleared.")
 
 if __name__ == "__main__":
     main()
